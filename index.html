@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Amigo Invisible 🎁</title>
+<style>
+  :root { --red:#b3262e; --green:#1f6b43; --cream:#fff8ef; --ink:#2b2220; --muted:#7a6b66; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background:var(--cream); color:var(--ink); }
+  .wrap { max-width:560px; margin:0 auto; padding:28px 18px 60px; }
+  h1 { font-size:28px; margin:0 0 4px; color:var(--red); text-align:center; }
+  .sub { text-align:center; color:var(--muted); margin:0 0 24px; }
+  .card { background:#fff; border-radius:16px; padding:20px; box-shadow:0 2px 12px rgba(0,0,0,.06); margin-bottom:16px; }
+  label { display:block; font-weight:600; margin:14px 0 6px; font-size:15px; }
+  label small { font-weight:400; color:var(--muted); }
+  textarea, input { width:100%; padding:12px; border:1.5px solid #e6dcd5; border-radius:10px; font:inherit; font-size:16px; background:#fffdfb; }
+  textarea { min-height:110px; resize:vertical; }
+  .row { display:flex; gap:10px; } .row > div { flex:1; }
+  button { font:inherit; font-size:16px; font-weight:600; border:0; border-radius:12px; padding:14px 18px; cursor:pointer; }
+  .primary { background:var(--red); color:#fff; width:100%; margin-top:18px; }
+  .wa { background:#25D366; color:#fff; padding:10px 14px; font-size:15px; }
+  .ghost { background:#f3ece7; color:var(--ink); padding:10px 14px; font-size:15px; }
+  .err { color:var(--red); margin-top:10px; font-weight:600; }
+  .person { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:12px 0; border-bottom:1px solid #f0e8e2; }
+  .person:last-child { border-bottom:0; }
+  .person .name { font-weight:600; }
+  .person.sent .name::after { content:" ✓ enviado"; color:var(--green); font-weight:500; font-size:13px; }
+  .btns { display:flex; gap:6px; }
+  .note { font-size:14px; color:var(--muted); line-height:1.45; }
+  .reveal { text-align:center; padding:36px 20px; }
+  .big { font-size:40px; font-weight:800; color:var(--green); margin:18px 0; }
+  .hidden { display:none; }
+  .tag { display:inline-block; background:#f3ece7; border-radius:20px; padding:6px 12px; margin:4px; font-size:14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- VISTA DEL PARTICIPANTE -->
+  <div id="viewReveal" class="hidden">
+    <h1>🎄 Amigo Invisible 🎄</h1>
+    <div class="card reveal">
+      <div id="hello" style="font-size:22px;font-weight:700"></div>
+      <p class="note" id="msg"></p>
+      <button class="primary" id="btnReveal">🎁 Descubrir a quién le regalo</button>
+      <div id="result" class="hidden">
+        <p style="margin:24px 0 0">Te tocó regalarle a…</p>
+        <div class="big" id="giftTo"></div>
+        <div id="extras"></div>
+        <p class="note" style="margin-top:20px">🤫 ¡Shhh! No se lo cuentes a nadie.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- VISTA DEL ORGANIZADOR -->
+  <div id="viewOrg" class="hidden">
+    <h1>🎁 Amigo Invisible</h1>
+    <p class="sub">Sorteá y mandá a cada uno su link por WhatsApp</p>
+
+    <div class="card" id="setup">
+      <label>Participantes <small>(uno por línea)</small></label>
+      <textarea id="names" placeholder="Cate&#10;José&#10;Mamá&#10;Papá"></textarea>
+
+      <label>Excepciones <small>(opcional: quiénes no se pueden tocar, ej. parejas)</small></label>
+      <textarea id="excl" style="min-height:70px" placeholder="Cate - José&#10;Mamá - Papá"></textarea>
+
+      <div class="row">
+        <div><label>Presupuesto <small>(opcional)</small></label><input id="budget" placeholder="$15.000"></div>
+        <div><label>Entrega <small>(opcional)</small></label><input id="date" placeholder="24/12"></div>
+      </div>
+
+      <label>Mensaje para todos <small>(opcional)</small></label>
+      <input id="message" placeholder="¡Feliz Navidad, familia! ❤️">
+
+      <button class="primary" id="btnDraw">🎲 Sortear</button>
+      <div class="err" id="err"></div>
+    </div>
+
+    <div class="card hidden" id="links">
+      <p class="note" style="margin-top:0">✅ <b>Sorteo listo.</b> Vos no ves los resultados: cada uno lo descubre al abrir su link. Tocá <b>WhatsApp</b> al lado de cada nombre y elegí a esa persona.</p>
+      <div id="list"></div>
+      <p class="note">⚠️ No vuelvas a sortear después de mandar links: los que ya enviaste dejarían de coincidir.</p>
+      <button class="ghost" id="btnReset" style="width:100%;margin-top:6px">Empezar de nuevo</button>
+    </div>
+  </div>
+
+</div>
+<script>
+const KEY = "navidad-familia";
+const STORE = "amigo-invisible-sorteo";
+
+function encode(obj) {
+  const bytes = new TextEncoder().encode(JSON.stringify(obj));
+  const k = new TextEncoder().encode(KEY);
+  let s = "";
+  bytes.forEach((b, i) => s += String.fromCharCode(b ^ k[i % k.length]));
+  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function decode(str) {
+  str = str.replace(/-/g, "+").replace(/_/g, "/");
+  while (str.length % 4) str += "=";
+  const raw = atob(str);
+  const k = new TextEncoder().encode(KEY);
+  const bytes = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i) ^ k[i % k.length];
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
+
+function shuffle(a) {
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = crypto.getRandomValues(new Uint32Array(1))[0] % (i + 1);
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+function norm(s) { return s.trim().toLowerCase(); }
+
+function draw(names, exclusions) {
+  const banned = new Set();
+  exclusions.forEach(([a, b]) => { banned.add(norm(a) + "|" + norm(b)); banned.add(norm(b) + "|" + norm(a)); });
+  for (let t = 0; t < 5000; t++) {
+    const r = shuffle(names.slice());
+    if (names.every((g, i) => g !== r[i] && !banned.has(norm(g) + "|" + norm(r[i])))) {
+      return names.map((g, i) => ({ g, r: r[i] }));
+    }
+  }
+  return null;
+}
+
+function baseUrl() { return location.href.split("#")[0]; }
+function save(d) { try { localStorage.setItem(STORE, JSON.stringify(d)); } catch (e) {} }
+function load() { try { return JSON.parse(localStorage.getItem(STORE)); } catch (e) { return null; } }
+function clear() { try { localStorage.removeItem(STORE); } catch (e) {} }
+
+function renderLinks(data) {
+  document.getElementById("setup").classList.add("hidden");
+  document.getElementById("links").classList.remove("hidden");
+  const list = document.getElementById("list");
+  list.innerHTML = "";
+  data.pairs.forEach((p, idx) => {
+    const link = baseUrl() + "#" + encode({ g: p.g, r: p.r, b: data.budget, d: data.date, m: data.message });
+    const text = `🎄 ¡Hola ${p.g}! Ya está el sorteo del amigo invisible 🎁\nAbrí tu link secreto para ver a quién le regalás (¡y no le cuentes a nadie! 🤫):\n${link}`;
+    const row = document.createElement("div");
+    row.className = "person" + (data.sent[idx] ? " sent" : "");
+    row.innerHTML = `<span class="name"></span><span class="btns"><button class="ghost">Copiar</button><button class="wa">WhatsApp</button></span>`;
+    row.querySelector(".name").textContent = p.g;
+    const mark = () => { data.sent[idx] = true; save(data); row.classList.add("sent"); };
+    row.querySelector(".wa").onclick = () => { window.open("https://wa.me/?text=" + encodeURIComponent(text), "_blank"); mark(); };
+    row.querySelector(".ghost").onclick = async (e) => {
+      try { await navigator.clipboard.writeText(text); e.target.textContent = "¡Copiado!"; mark(); }
+      catch (err) { prompt("Copiá este mensaje:", text); mark(); }
+    };
+    list.appendChild(row);
+  });
+}
+
+function initOrg() {
+  document.getElementById("viewOrg").classList.remove("hidden");
+  const saved = load();
+  if (saved && saved.pairs) renderLinks(saved);
+
+  document.getElementById("btnDraw").onclick = () => {
+    const err = document.getElementById("err"); err.textContent = "";
+    const names = document.getElementById("names").value.split("\n").map(s => s.trim()).filter(Boolean);
+    const seen = new Set();
+    for (const n of names) { if (seen.has(norm(n))) { err.textContent = `"${n}" está repetido. Usá nombres distintos (ej. "Tía Ana" y "Ana prima").`; return; } seen.add(norm(n)); }
+    if (names.length < 3) { err.textContent = "Necesitás al menos 3 participantes."; return; }
+    const exclusions = [];
+    for (const line of document.getElementById("excl").value.split("\n").map(s => s.trim()).filter(Boolean)) {
+      const parts = line.split(/\s*[-–,\/]\s*/).filter(Boolean);
+      if (parts.length !== 2) { err.textContent = `No entendí la excepción "${line}". Escribila así: Ana - Juan`; return; }
+      for (const p of parts) if (!seen.has(norm(p))) { err.textContent = `"${p}" (en excepciones) no está en la lista de participantes.`; return; }
+      exclusions.push(parts);
+    }
+    const pairs = draw(names, exclusions);
+    if (!pairs) { err.textContent = "Con esas excepciones no hay forma de sortear. Sacá alguna e intentá de nuevo."; return; }
+    const data = {
+      pairs,
+      budget: document.getElementById("budget").value.trim(),
+      date: document.getElementById("date").value.trim(),
+      message: document.getElementById("message").value.trim(),
+      sent: {}
+    };
+    save(data);
+    renderLinks(data);
+  };
+
+  document.getElementById("btnReset").onclick = () => {
+    if (confirm("¿Seguro? Si ya mandaste links, van a dejar de servir.")) {
+      clear();
+      document.getElementById("links").classList.add("hidden");
+      document.getElementById("setup").classList.remove("hidden");
+    }
+  };
+}
+
+function initReveal(hash) {
+  let d;
+  try { d = decode(hash); } catch (e) { initOrg(); return; }
+  document.getElementById("viewReveal").classList.remove("hidden");
+  document.getElementById("hello").textContent = `¡Hola ${d.g}! 🎅`;
+  document.getElementById("msg").textContent = d.m || "Tenés una misión secreta para esta Navidad.";
+  document.getElementById("giftTo").textContent = d.r;
+  const ex = document.getElementById("extras");
+  if (d.b) { const s = document.createElement("span"); s.className = "tag"; s.textContent = "💰 Presupuesto: " + d.b; ex.appendChild(s); }
+  if (d.d) { const s = document.createElement("span"); s.className = "tag"; s.textContent = "📅 Entrega: " + d.d; ex.appendChild(s); }
+  document.getElementById("btnReveal").onclick = () => {
+    document.getElementById("btnReveal").classList.add("hidden");
+    document.getElementById("result").classList.remove("hidden");
+  };
+}
+
+const h = location.hash.slice(1);
+if (h) initReveal(h); else initOrg();
+</script>
+</body>
+</html>
